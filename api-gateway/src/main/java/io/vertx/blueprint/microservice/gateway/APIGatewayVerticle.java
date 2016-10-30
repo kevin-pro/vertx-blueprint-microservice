@@ -5,6 +5,7 @@ import io.vertx.blueprint.microservice.account.AccountService;
 import io.vertx.blueprint.microservice.common.RestAPIVerticle;
 import io.vertx.blueprint.microservice.common.functional.Functional;
 import io.vertx.core.Future;
+import io.vertx.core.Launcher;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpServerOptions;
@@ -23,6 +24,7 @@ import io.vertx.ext.web.handler.UserSessionHandler;
 import io.vertx.servicediscovery.Record;
 import io.vertx.servicediscovery.types.EventBusService;
 import io.vertx.servicediscovery.types.HttpEndpoint;
+import io.vertx.servicediscovery.types.HttpLocation;
 
 import java.util.List;
 import java.util.Optional;
@@ -43,12 +45,16 @@ public class APIGatewayVerticle extends RestAPIVerticle {
 
   private OAuth2Auth oauth2;
 
+    public static void main(String[] args) {
+        Launcher.main(new String[]{"run", APIGatewayVerticle.class.getName(), "-cluster", "-ha", "-conf", "src/config/docker.json"});
+    }
+
   @Override
   public void start(Future<Void> future) throws Exception {
     super.start();
 
     // get HTTP host and port from configuration, or use default value
-    String host = config().getString("api.gateway.http.address", "localhost");
+    String host = config().getString("api.gateway.http.address", "api-gateway");
     int port = config().getInteger("api.gateway.http.port", 8787);
 
     Router router = Router.router(vertx);
@@ -66,7 +72,7 @@ public class APIGatewayVerticle extends RestAPIVerticle {
 
     router.route().handler(UserSessionHandler.create(oauth2));
 
-    String hostURI = String.format("https://localhost:%d", port);
+    String hostURI = String.format("https://api-gateway:%d", port);
 
     // set auth callback handler
     router.route("/callback").handler(context -> authCallback(oauth2, hostURI, context));
@@ -109,40 +115,49 @@ public class APIGatewayVerticle extends RestAPIVerticle {
   private void dispatchRequests(RoutingContext context) {
     int initialOffset = 5; // length of `/api/`
     // run with circuit breaker in order to deal with failure
-    circuitBreaker.execute(future -> {
-      getAllEndpoints().setHandler(ar -> {
-        if (ar.succeeded()) {
-          List<Record> recordList = ar.result();
-          // get relative path and retrieve prefix to dispatch client
-          String path = context.request().uri();
+    circuitBreaker.execute(future -> getAllEndpoints().setHandler(ar -> {
+      if (ar.succeeded()) {
+        List<Record> recordList = ar.result();
+        // get relative path and retrieve prefix to dispatch client
+        String path = context.request().uri();
 
-          if (path.length() <= initialOffset) {
-            notFound(context);
-            future.complete();
-            return;
-          }
-          String prefix = (path.substring(initialOffset)
-            .split("/"))[0];
-          // generate new relative path
-          String newPath = path.substring(initialOffset + prefix.length());
-          // get one relevant HTTP client, may not exist
-          Optional<HttpClient> client = recordList.stream()
-            .filter(record -> record.getMetadata().getString("api.name") != null)
-            .filter(record -> record.getMetadata().getString("api.name").equals(prefix))
-            .map(record -> (HttpClient) discovery.getReference(record).get())
-            .findAny(); // simple load balance
-
-          if (client.isPresent()) {
-            doDispatch(context, newPath, client.get(), future);
-          } else {
-            notFound(context);
-            future.complete();
-          }
-        } else {
-          future.fail(ar.cause());
+        if (path.length() <= initialOffset) {
+          notFound(context);
+          future.complete();
+          return;
         }
-      });
-    }).setHandler(ar -> {
+        String prefix = (path.substring(initialOffset)
+          .split("/"))[0];
+        // generate new relative path
+        String newPath = path.substring(initialOffset + prefix.length());
+
+          Optional<Record> recordOptional =  recordList.stream()
+                  .filter(record -> record.getMetadata().getString("api.name") != null)
+                  .filter(record -> record.getMetadata().getString("api.name").equals(prefix))
+                  .findAny();
+          if (recordOptional.isPresent()) {
+              Record record = recordOptional.get();
+              HttpLocation location = new HttpLocation(record.getLocation());
+              logger.info("Dispatch to: [" + location.getHost() + ":" + location.getPort() + "]");
+          }
+
+        // get one relevant HTTP client, may not exist
+        Optional<HttpClient> client = recordList.stream()
+          .filter(record -> record.getMetadata().getString("api.name") != null)
+          .filter(record -> record.getMetadata().getString("api.name").equals(prefix))
+          .map(record -> (HttpClient) discovery.getReference(record).get())
+          .findAny(); // simple load balance
+
+        if (client.isPresent()) {
+          doDispatch(context, newPath, client.get(), future);
+        } else {
+          notFound(context);
+          future.complete();
+        }
+      } else {
+        future.fail(ar.cause());
+      }
+    })).setHandler(ar -> {
       if (ar.failed()) {
         badGateway(ar.cause(), context);
       }
@@ -158,26 +173,20 @@ public class APIGatewayVerticle extends RestAPIVerticle {
    */
   private void doDispatch(RoutingContext context, String path, HttpClient client, Future<Object> cbFuture) {
     HttpClientRequest toReq = client
-      .request(context.request().method(), path, response -> {
-        response.bodyHandler(body -> {
-          if (response.statusCode() >= 500) { // api endpoint server error, circuit breaker should fail
-            cbFuture.fail(response.statusCode() + ": " + body.toString());
-          } else {
-            HttpServerResponse toRsp = context.response()
-              .setStatusCode(response.statusCode());
-            response.headers().forEach(header -> {
-              toRsp.putHeader(header.getKey(), header.getValue());
-            });
-            // send response
-            toRsp.end(body);
-            cbFuture.complete();
-          }
-        });
-      });
+      .request(context.request().method(), path, response -> response.bodyHandler(body -> {
+        if (response.statusCode() >= 500) { // api endpoint server error, circuit breaker should fail
+          cbFuture.fail(response.statusCode() + ": " + body.toString());
+        } else {
+          HttpServerResponse toRsp = context.response()
+            .setStatusCode(response.statusCode());
+          response.headers().forEach(header -> toRsp.putHeader(header.getKey(), header.getValue()));
+          // send response
+          toRsp.end(body);
+          cbFuture.complete();
+        }
+      }));
     // set headers
-    context.request().headers().forEach(header -> {
-      toReq.putHeader(header.getKey(), header.getValue());
-    });
+    context.request().headers().forEach(header -> toReq.putHeader(header.getKey(), header.getValue()));
     if (context.user() != null) {
       toReq.putHeader("user-principal", context.user().principal().encode());
     }
@@ -211,11 +220,9 @@ public class APIGatewayVerticle extends RestAPIVerticle {
   private void initHealthCheck() {
     if (config().getBoolean("heartbeat.enable", true)) { // by default enabled
       int period = config().getInteger("heartbeat.period", DEFAULT_CHECK_PERIOD);
-      vertx.setPeriodic(period, t -> {
-        circuitBreaker.execute(future -> { // behind the circuit breaker
-          sendHeartBeatRequest().setHandler(future.completer());
-        });
-      });
+      vertx.setPeriodic(period, t -> circuitBreaker.execute(future -> { // behind the circuit breaker
+        sendHeartBeatRequest().setHandler(future.completer());
+      }));
     }
   }
 
@@ -235,12 +242,10 @@ public class APIGatewayVerticle extends RestAPIVerticle {
             HttpClient client = discovery.getReference(record).get();
 
             Future<JsonObject> future = Future.future();
-            client.get(HEARTBEAT_PATH, response -> {
-              future.complete(new JsonObject()
-                .put("name", apiName)
-                .put("status", healthStatus(response.statusCode()))
-              );
-            })
+            client.get(HEARTBEAT_PATH, response -> future.complete(new JsonObject()
+              .put("name", apiName)
+              .put("status", healthStatus(response.statusCode()))
+            ))
               .exceptionHandler(future::fail)
               .end();
             return future;
@@ -301,10 +306,10 @@ public class APIGatewayVerticle extends RestAPIVerticle {
     final String redirectURI = hostURL + context.currentRoute().getPath() + "?redirect_uri=" + redirectTo;
     oauth2.getToken(new JsonObject().put("code", code).put("redirect_uri", redirectURI), ar -> {
       if (ar.failed()) {
-        logger.warn("Auth fail");
+        logger.warn("Auth fail", ar.cause());
         context.fail(ar.cause());
       } else {
-        logger.info("Auth success");
+        logger.info("Auth success: " + ar.result().principal());
         context.setUser(ar.result());
         context.response()
           .putHeader("Location", redirectTo)
@@ -342,7 +347,7 @@ public class APIGatewayVerticle extends RestAPIVerticle {
 
   private void loginEntryHandler(RoutingContext context) {
     String from = Optional.ofNullable(context.request().getParam("from"))
-      .orElse("https://localhost:8787");
+      .orElse("https://api-gateway:8787");
     context.response()
       .putHeader("Location", generateAuthRedirectURI(from))
       .setStatusCode(302)
@@ -358,7 +363,7 @@ public class APIGatewayVerticle extends RestAPIVerticle {
   private String generateAuthRedirectURI() {
     int port = config().getInteger("api.gateway.http.port", 8787);
     return oauth2.authorizeURL(new JsonObject()
-      .put("redirect_uri", "https://localhost:" + port + "/callback?redirect_uri=https://localhost:8787")
+      .put("redirect_uri", "https://api-gateway:" + port + "/callback?redirect_uri=https://api-gateway:8787")
       .put("scope", "")
       .put("state", ""));
   }
@@ -366,7 +371,7 @@ public class APIGatewayVerticle extends RestAPIVerticle {
   private String generateAuthRedirectURI(String from) {
     int port = config().getInteger("api.gateway.http.port", 8787);
     return oauth2.authorizeURL(new JsonObject()
-      .put("redirect_uri", "https://localhost:" + port + "/callback?redirect_uri=" + from)
+      .put("redirect_uri", "https://api-gateway:" + port + "/callback?redirect_uri=" + from)
       .put("scope", "")
       .put("state", ""));
   }

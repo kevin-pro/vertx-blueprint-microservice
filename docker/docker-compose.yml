@@ -2,15 +2,15 @@ version: "2"
 services:
   mysql:
     image: mysql:5.7
-    expose:
-      - "3306"
+    ports:
+      - "3306:3306"
     environment:
       - MYSQL_ROOT_PASSWORD=666666
       - MYSQL_DATABASE=vertx_blueprint
   mongo:
     image: mongo:3.3
-    expose:
-      - "27017"
+    ports:
+      - "27017:27017"
   keycloak-server:
     image: jboss/keycloak:latest
     ports:
@@ -20,48 +20,54 @@ services:
       - KEYCLOAK_PASSWORD=admin
   redis:
     image: redis:latest
-    expose:
-      - "6379"
+    ports:
+      - "6379:6379"
   inventory-microservice:
     image: vertx-blueprint/inventory-microservice
+    hostname: inventory-microservice
     links:
       - redis
     depends_on:
       - redis
-    expose:
-      - "8086"
+    ports:
+      - "8086:8086"
   product-microservice:
     image: vertx-blueprint/product-microservice
+    hostname: product-microservice
     links:
       - mysql
     depends_on:
       - mysql
-    expose:
-      - "8082"
+    ports:
+      - "8082:8082"
   account-microservice:
     image: vertx-blueprint/account-microservice
+    hostname: account-microservice
     links:
       - mysql
     depends_on:
       - mysql
-    expose:
-      - "8081"
+    ports:
+      - "8081:8081"
   store-microservice:
     image: vertx-blueprint/store-microservice
+    hostname: store-microservice
     links:
       - mongo
     depends_on:
       - mongo
-    expose:
-      - "8085"
+    ports:
+      - "8085:8085"
   cache-infrastructure:
     image: vertx-blueprint/cache-infrastructure
+    hostname: cache-infrastructure
     links:
       - redis
     depends_on:
       - redis
   shopping-cart-microservice:
     image: vertx-blueprint/shopping-cart-microservice
+    hostname: shopping-cart-microservice
     links:
       - mysql
       - inventory-microservice
@@ -69,24 +75,27 @@ services:
       - cache-infrastructure
     depends_on:
       - mysql
-    expose:
-      - "8084"
+    ports:
+      - "8084:8084"
   order-microservice:
     image: vertx-blueprint/order-microservice
+    hostname: order-microservice
     links:
       - mysql
     depends_on:
       - mysql
       - shopping-cart-microservice
       - inventory-microservice
-    expose:
-      - "8090"
+    ports:
+      - "8090:8090"
   monitor-dashboard:
     image: vertx-blueprint/monitor-dashboard
+    hostname: monitor-dashboard
     ports:
       - "9100:9100"
   api-gateway:
       image: vertx-blueprint/api-gateway
+      hostname: api-gateway
       ports:
         - "8787:8787"
       links:

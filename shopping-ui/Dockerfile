@@ -12,4 +12,4 @@ COPY src/config/docker.json $VERTICLE_HOME/
 
 WORKDIR $VERTICLE_HOME
 ENTRYPOINT ["sh", "-c"]
-CMD ["java -jar shopping-ui-fat.jar -Dvertx.metrics.options.enabled=true -cluster -conf docker.json"]
+CMD ["java -jar shopping-ui-fat.jar -Dvertx.disableDnsResolver=true -Dvertx.metrics.options.enabled=true -cluster -conf docker.json"]

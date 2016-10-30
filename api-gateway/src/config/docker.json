@@ -1,18 +1,18 @@
 {
   "api.gateway.http.port": 8787,
-  "api.gateway.http.address": "0.0.0.0",
+  "api.gateway.http.address": "api-gateway",
   "circuit-breaker": {
     "name": "api-gateway-cb",
     "timeout": 10000,
     "max-failures": 5
   },
-  "realm": "Vert.x",
-  "realm-public-key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArFhuwIVRXG3RqtpS6JH7tCTt1iQv+Muqx+o+7/7KeLE0LTbXhOGcRcWoIkgQXKLE0wTYecJr6rLB3j/eWOFIKeYdrjBbVCInE0oJ2monrV0kPb2giCWrRcpDa6vwsUAOAWZ4HN5HHXu3RD/AFgictbkKQXl3AA1g7CU47gAiE5nxNh/vIVR+o5TBjyady0Sc5eXBZSGkSo1Aw1T7yDbGcuNhztBZ8bURDSBCP5GMXF9bhnln4rcT7PPiuNVbMbGIDs/qaPWAInUNGZUq9SmC/4kLV5YCEIavj3w+gA66nf+iJEKM7FEGCdULlomQHRUhYjmXNrSLMiR1JyNZPWBi9QIDAQAB",
+  "realm": "master",
+  "realm-public-key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAg6G391d5pSTN3/neSQ4DmUrcP2K+C1F4yPX02kgTqsE3ZdMMkZXIBM3uoRLEazRAsCqZ5XCkTEtH2uera0bcLGZHx+1P0Hk4+TTmCBHTybigMfXG+na7PsD3ZjBA+vkTJNA0CI8i0Okq8WTxWiNteHqLkxWdopaUTOByoQOzGDBQmdJgv3xoq4JFv/WFtTidhKIk+JjYHQBn4Ys2EThh75CHqpmuB7f3gcAI1YTWCrD9bznYvHzfoPIvx3CzzHMIEOOMwqWNXbGrF9Ei5+mQwb0QmlrUHC3N016Pq54goY7UZfawdP16WOwoJNOcTXpG0dzLupSFZVvUu37o4B5ZjwIDAQAB",
   "auth-server-url": "http://keycloak-server:8080/auth",
   "ssl-required": "external",
   "resource": "vertx-blueprint",
   "credentials": {
-    "secret": "0c5a42df-48ce-40e3-986c-06bd4e91fadb"
+    "secret": "82595cfd-310c-40ec-b24d-033549c535f2"
   },
   "use-resource-role-mappings": true
 }

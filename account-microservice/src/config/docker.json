@@ -1,7 +1,7 @@
 {
   "api.name": "account",
   "user.account.http.address": "account-microservice",
-  "user.account.http.port": 8082,
+  "user.account.http.port": 8081,
   "url": "jdbc:mysql://mysql:3306/vertx_blueprint?characterEncoding=UTF-8&useSSL=false",
   "driver_class": "com.mysql.cj.jdbc.Driver",
   "user": "root",

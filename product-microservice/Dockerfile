@@ -12,4 +12,4 @@ COPY src/config/docker.json $VERTICLE_HOME/
 
 WORKDIR $VERTICLE_HOME
 ENTRYPOINT ["sh", "-c"]
-CMD ["java -jar product-microservice-fat.jar -cluster -conf docker.json"]
+CMD ["java -Dvertx.disableDnsResolver=true -jar product-microservice-fat.jar -cluster -conf docker.json"]
